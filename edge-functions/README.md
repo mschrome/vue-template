@@ -1,148 +1,118 @@
-# Edge Functions 架构说明
+# Edge Functions - Vue SPA 路由处理
 
-## 📁 文件结构
+## 功能说明
 
-```
-edge-functions/
-└── [id].js    # 动态路由处理器（只处理 /:id）
-```
+这些 Edge Functions 用于支持 Vue.js 单页应用（SPA）的客户端路由，解决了直接访问非根路径（如 `/about`, `/user/123`）时的 404 问题。
 
-## 🎯 EdgeOne Pages 路由机制
-
-### 关键概念
-
-EdgeOne Pages 使用**基于文件的路由系统**：
-
-| 文件路径 | 匹配的 URL | 说明 |
-|---------|-----------|------|
-| `edge-functions/index.js` | `/` | 根路径 |
-| `edge-functions/[id].js` | `/:id` | 动态 ID（如 `/123`, `/abc`） |
-| `edge-functions/api/[name].js` | `/api/:name` | API 路由 |
-| 无匹配的函数 | 任何路径 | 由前端应用处理 |
-
-**本项目只有 `[id].js`**，因此：
-- ✅ `/:id` 路径由 Edge Function 处理（返回 JSON API）
-- ✅ `/` 路径由 React 应用处理（返回 HTML 首页）
-- ✅ EdgeOne Pages 自动识别和分发路由
-
-### 为什么不需要 index.js？
-
-如果你的需求是：
-- **根路径 `/` 显示 React 应用** → 不需要 `index.js`，EdgeOne Pages 自动处理
-- **API 路径 `/:id` 返回数据** → 只需要 `[id].js`
-
-如果你想在 Edge Function 中处理根路径（比如做一些特殊逻辑），才需要创建 `index.js`。
-
-## 🔧 工作原理
-
-### 路由处理流程
-
-```
-用户请求 EdgeOne Pages
-       |
-       ├─ 请求 /
-       │   ├─ 检查是否有 edge-functions/index.js → 无
-       │   └─ 返回静态资源（React 应用的 index.html）
-       │
-       └─ 请求 /123
-           ├─ 检查是否有匹配的 Edge Function → 是（[id].js）
-           ├─ params.id = "123"
-           └─ 执行 Edge Function 返回 JSON
-```
-
-### 本地开发 vs 生产环境
-
-**本地开发** (`edgeone pages dev`):
-```
-EdgeOne Pages Dev Server (8088)
-  ├─ Edge Functions 处理器
-  │   └─ [id].js → 处理 /:id
-  │
-  └─ 静态文件服务
-      └─ build/ 目录 → 处理 / 和其他静态路径
-```
-
-**生产环境**:
-```
-EdgeOne 全球边缘网络
-  ├─ Edge Functions (边缘节点)
-  │   └─ [id].js → 超低延迟 API 响应
-  │
-  └─ 静态资源 CDN
-      └─ React 应用 → 全球加速分发
-```
-
-## 📝 使用示例
-
-### 1. 访问首页（React 应用）
-```bash
-# 开发环境
-curl http://localhost:8088/
-# 返回: React 应用的 HTML（由 build/index.html 提供）
-# 不经过 Edge Function
-
-# 或直接访问 React 开发服务器
-curl http://localhost:3000/
-# 返回: 相同的 HTML
-```
-
-### 2. API 调用（Edge Function）
-```bash
-# GET 请求
-curl http://localhost:8787/user123
-
-# POST 请求
-curl -X POST http://localhost:8787/order456 \
-  -H "Content-Type: application/json" \
-  -d '{"item": "产品A", "quantity": 2}'
-
-# DELETE 请求
-curl -X DELETE http://localhost:8787/cart789
-```
-
-## 🚀 扩展建议
-
-### 添加更多路由
-
-可以创建更具体的路由文件：
+## 文件结构
 
 ```
 edge-functions/
-├── [id].js              # 根路径和通用动态路由
-├── api/
-│   ├── users/[id].js    # /api/users/:id
-│   └── products/[id].js # /api/products/:id
-└── admin/
-    └── [action].js      # /admin/:action
+├── index.js      # 处理根路径 /
+├── [[id]].js     # 处理所有其他路径（catch-all）
+└── README.md     # 本文档
 ```
 
-### 添加中间件逻辑
+## 路由逻辑
 
-在 `[id].js` 中可以添加：
-- ✅ 身份验证
-- ✅ 速率限制
-- ✅ 请求日志
-- ✅ 地理位置检测
-- ✅ A/B 测试
+### 1. `index.js` - 根路径处理
+- **匹配路径**: `/`
+- **功能**: 返回 `index.html`
+- **适用场景**: 用户访问网站首页
 
-示例：
+### 2. `[[id]].js` - Catch-all 路由处理（关键修复）
+- **匹配路径**: 所有非根路径（如 `/about`, `/user/123` 等）
+- **功能**: 
+  - ✅ 对于**静态资源请求**（`.js`, `.css`, `.png` 等），**不处理**，让请求穿透到 Pages 平台
+  - ✅ 对于**HTML 路由**（没有文件扩展名的路径），返回 `index.html`，由 Vue Router 接管
+- **适用场景**: 支持 SPA 客户端路由
+
+## 问题修复说明
+
+### 之前的问题
+在 SPA 单页应用下，当访问首页时：
+1. Edge Function 拦截所有请求（包括 `/` 和静态资源如 `/assets/main.js`）
+2. 对所有请求都返回 `index.html` 的内容
+3. 导致 JS 文件的 `Content-Type` 变成 `text/html` 而不是 `application/javascript`
+4. 浏览器无法正确解析 JS 文件，页面渲染失败
+
+### 修复方案
+在 `[[id]].js` 中添加了**静态资源检测逻辑**：
+
 ```javascript
-export async function onRequest(context) {
-  // 中间件：日志记录
-  console.log(`[${new Date().toISOString()}] ${context.request.method} ${context.request.url}`);
-  
-  // 中间件：身份验证
-  const token = context.request.headers.get('authorization');
-  if (!token && needsAuth(context.request.url)) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-  
-  // 原有路由逻辑...
+// 检查是否是静态资源请求（包含文件扩展名）
+const staticExtensions = [
+  '.js', '.css', '.json', '.xml', '.txt',
+  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp',
+  '.woff', '.woff2', '.ttf', '.eot', '.otf',
+  '.mp4', '.webm', '.mp3', '.wav',
+  '.pdf', '.zip',
+  '.map' // source map
+];
+
+const hasExtension = staticExtensions.some(ext => pathname.toLowerCase().endsWith(ext));
+
+// 如果是静态资源，不处理，让请求穿透
+if (hasExtension) {
+  return fetch(request);
 }
 ```
 
-## 📚 参考文档
+这样确保了：
+- ✅ 静态资源（JS、CSS、图片等）由 EdgeOne Pages 平台处理，保持正确的 `Content-Type`
+- ✅ HTML 路由（如 `/about`）返回 `index.html`，由 Vue Router 处理客户端路由
+- ✅ SPA 应用正常工作
 
-- [EdgeOne Pages 官方文档](https://pages.edgeone.ai/document/product-introduction)
-- [完整使用指南](../EDGE_FUNCTIONS_README.md)
+## 工作流程示例
 
+### 场景 1: 访问首页
+```
+请求: https://example.com/
+处理: index.js → 返回 index.html
+结果: ✅ 正常显示首页
+```
+
+### 场景 2: 访问 SPA 路由
+```
+请求: https://example.com/about
+处理: [[id]].js → 检测到没有文件扩展名 → 返回 index.html
+结果: ✅ Vue Router 接管，显示 About 页面
+```
+
+### 场景 3: 加载 JS 文件
+```
+请求: https://example.com/assets/main.js
+处理: [[id]].js → 检测到 .js 扩展名 → 穿透请求
+结果: ✅ Pages 平台返回 JS 文件，Content-Type: application/javascript
+```
+
+### 场景 4: 加载 CSS 文件
+```
+请求: https://example.com/assets/style.css
+处理: [[id]].js → 检测到 .css 扩展名 → 穿透请求
+结果: ✅ Pages 平台返回 CSS 文件，Content-Type: text/css
+```
+
+## 参考文档
+
+- [EdgeOne Pages - Edge Functions 文档](https://pages.edgeone.ai/zh/document/edge-functions)
+- [EdgeOne Pages - 路由说明](https://pages.edgeone.ai/zh/document/edge-functions#路由)
+
+## 本地测试
+
+使用 EdgeOne CLI 进行本地测试：
+
+```bash
+# 安装 EdgeOne CLI
+npm install -g edgeone
+
+# 在项目根目录启动本地服务
+edgeone pages dev
+```
+
+## 注意事项
+
+1. **静态资源扩展名**: 如果你的项目使用了其他类型的静态资源，请在 `staticExtensions` 数组中添加对应的扩展名
+2. **路由优先级**: Edge Functions 路由优先于静态资源，所以必须正确处理静态资源的穿透
+3. **性能优化**: 静态资源的穿透处理确保了 Pages 平台可以正确缓存和加速这些资源
+4. **调试**: 可以通过响应头 `x-edge-function` 和 `x-matched-path` 来调试路由匹配情况

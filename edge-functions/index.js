@@ -1,6 +1,6 @@
 /**
  * EdgeOne Edge Function - 根路径处理
- * 只处理根路径 /，返回 Hugo 静态站点首页
+ * 只处理根路径 /，返回 Vue SPA 应用首页
  * 
  * 其他路径由 [[id]].js 处理
  */
