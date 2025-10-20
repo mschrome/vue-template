@@ -30,23 +30,11 @@ export async function onRequest(context) {
     const hasExtension = staticExtensions.some(ext => pathname.toLowerCase().endsWith(ext));
     
     // 如果是静态资源，不处理，让请求穿透
-    // 返回 null 或不返回任何内容，让 EdgeOne Pages 平台处理
+    // 直接返回原始请求，不做任何修改，避免破坏压缩编码
     if (hasExtension) {
-      // 不处理，让请求继续到 Pages 静态资源
-      // 注意：这里我们不添加自定义头，让平台正确处理 Content-Type
-      const assetResponse = await fetch(request);
-      
-      // 为了调试，可以在非关键资源上添加标识
-      // 但保持原始的 Content-Type 不变
-      const newHeaders = new Headers(assetResponse.headers);
-      newHeaders.set('x-ef-passthrough', 'true'); // 标识这是穿透的请求
-      newHeaders.set('x-ef-handler', '[[id]].js');
-      
-      return new Response(assetResponse.body, {
-        status: assetResponse.status,
-        statusText: assetResponse.statusText,
-        headers: newHeaders
-      });
+      // 直接穿透，让 EdgeOne Pages 平台处理静态资源
+      // 不重新包装 Response，以保持原始的 Content-Type 和编码
+      return fetch(request);
     }
     
     // 对于 HTML 路由（SPA 路由），返回 index.html
