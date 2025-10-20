@@ -19,8 +19,13 @@ export async function onRequest(context) {
     if (response.ok) {
       // 创建新的 Headers 对象，避免只读问题
       const newHeaders = new Headers(response.headers);
+      
+      // 设置自定义头，用于调试和确认函数执行
       newHeaders.set('x-edge-function', 'root');
       newHeaders.set('x-powered-by', 'EdgeOne Pages');
+      newHeaders.set('x-matched-path', url.pathname); // 添加匹配路径
+      newHeaders.set('x-ef-handler', 'index.js'); // 明确标识处理文件
+      newHeaders.set('x-ef-timestamp', new Date().toISOString()); // 添加时间戳
       
       // 返回首页内容
       return new Response(response.body, {

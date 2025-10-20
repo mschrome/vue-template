@@ -33,7 +33,20 @@ export async function onRequest(context) {
     // 返回 null 或不返回任何内容，让 EdgeOne Pages 平台处理
     if (hasExtension) {
       // 不处理，让请求继续到 Pages 静态资源
-      return fetch(request);
+      // 注意：这里我们不添加自定义头，让平台正确处理 Content-Type
+      const assetResponse = await fetch(request);
+      
+      // 为了调试，可以在非关键资源上添加标识
+      // 但保持原始的 Content-Type 不变
+      const newHeaders = new Headers(assetResponse.headers);
+      newHeaders.set('x-ef-passthrough', 'true'); // 标识这是穿透的请求
+      newHeaders.set('x-ef-handler', '[[id]].js');
+      
+      return new Response(assetResponse.body, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers: newHeaders
+      });
     }
     
     // 对于 HTML 路由（SPA 路由），返回 index.html
@@ -44,9 +57,14 @@ export async function onRequest(context) {
     if (response.ok) {
       // 创建新的 Headers 对象，避免只读问题
       const newHeaders = new Headers(response.headers);
+      
+      // 设置自定义头，用于调试和确认函数执行
       newHeaders.set('x-edge-function', 'catch-all');
       newHeaders.set('x-powered-by', 'EdgeOne Pages');
       newHeaders.set('x-matched-path', pathname);
+      newHeaders.set('x-ef-handler', '[[id]].js'); // 明确标识处理文件
+      newHeaders.set('x-ef-timestamp', new Date().toISOString()); // 添加时间戳
+      newHeaders.set('x-ef-route-type', 'spa'); // 标识这是 SPA 路由
       
       // 返回首页内容
       return new Response(response.body, {
